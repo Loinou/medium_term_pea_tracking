@@ -73,8 +73,8 @@ INDICES = {
 
 SECTOR_ETFS = {
     "Technologie":   "SX8P.DE",   # STOXX Europe 600 Technology
-    "Aéronautique":  "DXGE.DE",   # Best available proxy — no pure European aerospace ETF
-    "Banques":       "SX7P.DE",   # STOXX Europe 600 Banks
+    "Aéronautique":  "EXV6.DE",   # iShares STOXX Europe 600 Industrial Goods (best proxy for aerospace)
+    "Banques":       "EXV1.DE",   # iShares STOXX Europe 600 Banks
     "Industriels":   "SXNP.DE",   # STOXX Europe 600 Industrial Goods & Services
     "Luxe":          "SXQP.DE",   # STOXX Europe 600 Personal & Household Goods
     "Énergie":       "SXEP.DE",   # STOXX Europe 600 Oil & Gas
@@ -178,7 +178,7 @@ def serve_frontend():
 @app.get("/macro")
 def get_macro():
     tickers = list(INDICES.values())
-    data = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=True)
+    data = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=True, session=_YF_SESSION)
     result = {}
     for key, sym in INDICES.items():
         try:
@@ -219,7 +219,7 @@ def get_watchlist():
         raw = yf.download(
             tickers + ["^STOXX50E"],
             period="1y", interval="1wk",
-            progress=False, auto_adjust=True, threads=True,
+            progress=False, auto_adjust=True, threads=False,
             session=_YF_SESSION,
         )
     except Exception as e:
@@ -326,7 +326,7 @@ def debug():
         raw = yf.download(
             tickers[:3],           # only first 3 to be fast
             period="1mo", interval="1wk",
-            progress=False, auto_adjust=True, threads=True,
+            progress=False, auto_adjust=True, threads=False,
             session=_YF_SESSION,
         )
         results["raw_empty"] = raw.empty
@@ -350,7 +350,7 @@ def get_sectors():
     try:
         raw = yf.download(
             tickers, period="1y", interval="1wk",
-            progress=False, auto_adjust=True, threads=True,
+            progress=False, auto_adjust=True, threads=False,
             session=_YF_SESSION,
         )
     except Exception as e:
