@@ -203,16 +203,28 @@ def get_macro():
 @app.get("/watchlist")
 def get_watchlist():
     tickers = [item["ticker"] for item in WATCHLIST]
-    # Single batch download — default group_by="column" gives raw["Close"][ticker]
-    raw = yf.download(
-        tickers + ["^STOXX50E"],
-        period="1y", interval="1wk",
-        progress=False, auto_adjust=True, threads=True,
-    )
+    try:
+        raw = yf.download(
+            tickers + ["^STOXX50E"],
+            period="1y", interval="1wk",
+            progress=False, auto_adjust=True, threads=True,
+        )
+    except Exception as e:
+        print(f"Watchlist batch download failed: {e}")
+        return []
+
+    if raw.empty:
+        print("Watchlist batch download returned empty DataFrame")
+        return []
 
     close_df  = raw["Close"]
     volume_df = raw["Volume"]
-    print("Columns in batch download:", list(close_df.columns))
+    # Guard: single-ticker edge case returns a Series
+    if isinstance(close_df, pd.Series):
+        close_df = close_df.to_frame()
+    if isinstance(volume_df, pd.Series):
+        volume_df = volume_df.to_frame()
+    print("Watchlist columns:", list(close_df.columns))
 
     bench = pd.DataFrame()
     if "^STOXX50E" in close_df.columns:
@@ -294,17 +306,73 @@ def get_chart(ticker: str, period: str = "6mo"):
 
 @app.get("/sectors")
 def get_sectors():
+    tickers = list(SECTOR_ETFS.values())
+    try:
+        raw = yf.download(
+            tickers, period="1y", interval="1wk",
+            progress=False, auto_adjust=True, threads=True,
+        )
+    except Exception as e:
+        print(f"Sectors batch download failed: {e}")
+        return []
+
+    close_df = raw["Close"]
+    if isinstance(close_df, pd.Series):
+        close_df = close_df.to_frame()
+
     results = []
-    period_weeks = 4
     for name, ticker in SECTOR_ETFS.items():
         try:
-            hist = yf.download(ticker, period="3mo", interval="1wk", progress=False, auto_adjust=True)
-            perf = pct_change(hist["Close"], period_weeks) if not hist.empty else None
-            results.append({"name": name, "perf": perf or 0.0})
-        except:
-            results.append({"name": name, "perf": 0.0})
+            if ticker not in close_df.columns:
+                print(f"  Sector {name} ({ticker}): NOT FOUND")
+                results.append({"name": name, "ticker": ticker,
+                                "perf1w": 0.0, "perf1m": 0.0, "perf3m": 0.0,
+                                "zscore": 0.0, "signal": "—"})
+                continue
 
-    results.sort(key=lambda x: x["perf"], reverse=True)
+            close = close_df[ticker].dropna()
+            print(f"  Sector {name} ({ticker}): {len(close)} weeks")
+
+            if len(close) < 5:
+                results.append({"name": name, "ticker": ticker,
+                                "perf1w": 0.0, "perf1m": 0.0, "perf3m": 0.0,
+                                "zscore": 0.0, "signal": "—"})
+                continue
+
+            perf1w = pct_change(close, 1)  or 0.0
+            perf1m = pct_change(close, 4)  or 0.0
+            perf3m = pct_change(close, 13) or 0.0
+
+            # Z-score: how unusual is the current 4W return vs its own 1Y history?
+            rolling_4w = close.pct_change(4).dropna() * 100
+            if len(rolling_4w) >= 8:
+                mu, sigma = rolling_4w.mean(), rolling_4w.std()
+                zscore = round((rolling_4w.iloc[-1] - mu) / sigma, 2) if sigma > 0 else 0.0
+            else:
+                zscore = 0.0
+
+            if zscore >= 1.5:
+                signal = "momentum"
+            elif zscore <= -1.5:
+                signal = "oversold"
+            elif abs(zscore) >= 1.0:
+                signal = "attention"
+            else:
+                signal = "neutre"
+
+            results.append({
+                "name": name, "ticker": ticker,
+                "perf1w": round(perf1w, 2), "perf1m": round(perf1m, 2), "perf3m": round(perf3m, 2),
+                "zscore": zscore, "signal": signal,
+            })
+        except Exception as e:
+            print(f"  Sector {name} ({ticker}): error — {e}")
+            results.append({"name": name, "ticker": ticker,
+                            "perf1w": 0.0, "perf1m": 0.0, "perf3m": 0.0,
+                            "zscore": 0.0, "signal": "—"})
+
+    # Most abnormal (highest |z-score|) first — those are the actionable signals
+    results.sort(key=lambda x: abs(x["zscore"]), reverse=True)
     return results
 
 @app.post("/analyze")
