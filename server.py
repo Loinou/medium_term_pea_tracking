@@ -203,27 +203,37 @@ def get_macro():
 @app.get("/watchlist")
 def get_watchlist():
     tickers = [item["ticker"] for item in WATCHLIST]
-    # Single batch download for all tickers + benchmark (was 31 sequential calls)
+    # Single batch download — default group_by="column" gives raw["Close"][ticker]
     raw = yf.download(
         tickers + ["^STOXX50E"],
         period="1y", interval="1wk",
-        group_by="ticker", progress=False, auto_adjust=True, threads=True,
+        progress=False, auto_adjust=True, threads=True,
     )
 
-    try:
-        bench = raw["^STOXX50E"].dropna(how="all")
-    except Exception:
-        bench = pd.DataFrame()
+    close_df  = raw["Close"]
+    volume_df = raw["Volume"]
+    print("Columns in batch download:", list(close_df.columns))
+
+    bench = pd.DataFrame()
+    if "^STOXX50E" in close_df.columns:
+        bench = pd.DataFrame({"Close": close_df["^STOXX50E"].dropna()})
 
     results = []
     for item in WATCHLIST:
         t = item["ticker"]
         try:
-            hist = raw[t].dropna(how="all")
-            if hist.empty:
+            if t not in close_df.columns:
+                print(f"  {t}: not found in batch data")
                 continue
 
-            close = hist["Close"]
+            close  = close_df[t].dropna()
+            volume = volume_df[t].dropna() if t in volume_df.columns else pd.Series(dtype=float)
+
+            if len(close) < 5:
+                continue
+
+            hist = pd.DataFrame({"Close": close, "Volume": volume}).dropna(subset=["Close"])
+
             last_price = safe_float(close.iloc[-1])
             if last_price is None:
                 continue
@@ -255,6 +265,7 @@ def get_watchlist():
             print(f"Erreur {t}: {e}")
             continue
 
+    print(f"Watchlist returning {len(results)} rows")
     return results
 
 @app.get("/chart/{ticker}")
