@@ -436,7 +436,8 @@ document.addEventListener('DOMContentLoaded', () => {
 async function reload() {
   document.getElementById('last-update').textContent =
     'MàJ: ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-  await Promise.all([loadMacro(), loadWatchlist(), loadSectors()]);
+  await loadMacro();                                    // warms the server first
+  await Promise.all([loadWatchlist(), loadSectors()]); // then load heavy data in parallel
 }
 
 // ── MACRO ─────────────────────────────────────────────────────────────────

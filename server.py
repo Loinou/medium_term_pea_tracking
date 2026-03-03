@@ -202,13 +202,24 @@ def get_macro():
 
 @app.get("/watchlist")
 def get_watchlist():
-    bench = yf.download("^STOXX50E", period="6mo", interval="1wk", progress=False, auto_adjust=True)
+    tickers = [item["ticker"] for item in WATCHLIST]
+    # Single batch download for all tickers + benchmark (was 31 sequential calls)
+    raw = yf.download(
+        tickers + ["^STOXX50E"],
+        period="1y", interval="1wk",
+        group_by="ticker", progress=False, auto_adjust=True, threads=True,
+    )
+
+    try:
+        bench = raw["^STOXX50E"].dropna(how="all")
+    except Exception:
+        bench = pd.DataFrame()
 
     results = []
     for item in WATCHLIST:
         t = item["ticker"]
         try:
-            hist = yf.download(t, period="2y", interval="1wk", progress=False, auto_adjust=True)
+            hist = raw[t].dropna(how="all")
             if hist.empty:
                 continue
 
@@ -225,17 +236,6 @@ def get_watchlist():
             stage = weinstein_stage(hist)
             vol   = volume_trend(hist)
             rs    = relative_strength(hist, bench)
-
-            # Market cap
-            info = yf.Ticker(t).fast_info
-            mc_raw = getattr(info, "market_cap", None)
-            if mc_raw and mc_raw > 1e12:
-                mktcap = f"{mc_raw/1e12:.1f}T"
-            elif mc_raw and mc_raw > 1e9:
-                mktcap = f"{mc_raw/1e9:.0f}B"
-            else:
-                mktcap = "—"
-
             score = conviction_score(stage, rs, vol, chg1m)
 
             results.append({
@@ -249,7 +249,7 @@ def get_watchlist():
                 "vol":    vol,
                 "rs":     rs,
                 "score":  score,
-                "mktcap": mktcap,
+                "mktcap": "—",
             })
         except Exception as e:
             print(f"Erreur {t}: {e}")
