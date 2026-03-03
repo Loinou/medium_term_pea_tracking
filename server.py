@@ -159,7 +159,7 @@ def conviction_score(stage, rs, vol, chg1m) -> int:
 
 @app.get("/")
 def serve_frontend():
-    return FileResponse("Index.html")
+    return FileResponse("index.html")
 
 @app.get("/macro")
 def get_macro():
