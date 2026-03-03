@@ -22,6 +22,18 @@ from datetime import datetime, timedelta
 import math
 import os
 
+# Yahoo Finance blocks datacenter IPs without a real browser User-Agent
+_YF_SESSION = requests.Session()
+_YF_SESSION.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+})
+
 app = FastAPI(title="PEA Signal API")
 
 app.add_middleware(
@@ -60,15 +72,15 @@ INDICES = {
 }
 
 SECTOR_ETFS = {
-    "Technologie":   "DXGE.DE",
-    "Aéronautique":  "AIR.PA",
-    "Banques":       "SX7P.DE",
-    "Industriels":   "SIE.DE",
-    "Luxe":          "MC.PA",
-    "Énergie":       "TTE.PA",
-    "Santé":         "SAN.PA",
-    "Assurance":     "ALV.DE",
-    "Immobilier":    "URW.AS",
+    "Technologie":   "SX8P.DE",   # STOXX Europe 600 Technology
+    "Aéronautique":  "EXV6.DE",   # iShares STOXX Europe 600 Industrial Goods (best proxy for aerospace)
+    "Banques":       "EXV1.DE",   # iShares STOXX Europe 600 Banks
+    "Industriels":   "SXNP.DE",   # STOXX Europe 600 Industrial Goods & Services
+    "Luxe":          "SXQP.DE",   # STOXX Europe 600 Personal & Household Goods
+    "Énergie":       "SXEP.DE",   # STOXX Europe 600 Oil & Gas
+    "Santé":         "SXDP.DE",   # STOXX Europe 600 Health Care
+    "Assurance":     "SXIP.DE",   # STOXX Europe 600 Insurance
+    "Immobilier":    "SXREP.DE",  # STOXX Europe 600 Real Estate
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -166,7 +178,7 @@ def serve_frontend():
 @app.get("/macro")
 def get_macro():
     tickers = list(INDICES.values())
-    data = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=True)
+    data = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=True, session=_YF_SESSION)
     result = {}
     for key, sym in INDICES.items():
         try:
@@ -202,17 +214,51 @@ def get_macro():
 
 @app.get("/watchlist")
 def get_watchlist():
-    bench = yf.download("^STOXX50E", period="6mo", interval="1wk", progress=False, auto_adjust=True)
+    tickers = [item["ticker"] for item in WATCHLIST]
+    try:
+        raw = yf.download(
+            tickers + ["^STOXX50E"],
+            period="1y", interval="1wk",
+            progress=False, auto_adjust=True, threads=False,
+            session=_YF_SESSION,
+        )
+    except Exception as e:
+        print(f"Watchlist batch download failed: {e}")
+        return []
+
+    if raw.empty:
+        print("Watchlist batch download returned empty DataFrame")
+        return []
+
+    close_df  = raw["Close"]
+    volume_df = raw["Volume"]
+    # Guard: single-ticker edge case returns a Series
+    if isinstance(close_df, pd.Series):
+        close_df = close_df.to_frame()
+    if isinstance(volume_df, pd.Series):
+        volume_df = volume_df.to_frame()
+    print("Watchlist columns:", list(close_df.columns))
+
+    bench = pd.DataFrame()
+    if "^STOXX50E" in close_df.columns:
+        bench = pd.DataFrame({"Close": close_df["^STOXX50E"].dropna()})
 
     results = []
     for item in WATCHLIST:
         t = item["ticker"]
         try:
-            hist = yf.download(t, period="2y", interval="1wk", progress=False, auto_adjust=True)
-            if hist.empty:
+            if t not in close_df.columns:
+                print(f"  {t}: not found in batch data")
                 continue
 
-            close = hist["Close"]
+            close  = close_df[t].dropna()
+            volume = volume_df[t].dropna() if t in volume_df.columns else pd.Series(dtype=float)
+
+            if len(close) < 5:
+                continue
+
+            hist = pd.DataFrame({"Close": close, "Volume": volume}).dropna(subset=["Close"])
+
             last_price = safe_float(close.iloc[-1])
             if last_price is None:
                 continue
@@ -225,17 +271,6 @@ def get_watchlist():
             stage = weinstein_stage(hist)
             vol   = volume_trend(hist)
             rs    = relative_strength(hist, bench)
-
-            # Market cap
-            info = yf.Ticker(t).fast_info
-            mc_raw = getattr(info, "market_cap", None)
-            if mc_raw and mc_raw > 1e12:
-                mktcap = f"{mc_raw/1e12:.1f}T"
-            elif mc_raw and mc_raw > 1e9:
-                mktcap = f"{mc_raw/1e9:.0f}B"
-            else:
-                mktcap = "—"
-
             score = conviction_score(stage, rs, vol, chg1m)
 
             results.append({
@@ -249,17 +284,18 @@ def get_watchlist():
                 "vol":    vol,
                 "rs":     rs,
                 "score":  score,
-                "mktcap": mktcap,
+                "mktcap": "—",
             })
         except Exception as e:
             print(f"Erreur {t}: {e}")
             continue
 
+    print(f"Watchlist returning {len(results)} rows")
     return results
 
 @app.get("/chart/{ticker}")
 def get_chart(ticker: str, period: str = "6mo"):
-    hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True)
+    hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True, session=_YF_SESSION)
     if hist.empty:
         return {"error": "no data"}
 
@@ -281,19 +317,103 @@ def get_chart(ticker: str, period: str = "6mo"):
         "ma20":    ma20_v,
     }
 
+@app.get("/debug")
+def debug():
+    """Lightweight diagnostic — open in any browser to see what yfinance returns."""
+    tickers = [item["ticker"] for item in WATCHLIST]
+    results = {"watchlist_tickers": tickers, "checks": []}
+    try:
+        raw = yf.download(
+            tickers[:3],           # only first 3 to be fast
+            period="1mo", interval="1wk",
+            progress=False, auto_adjust=True, threads=False,
+            session=_YF_SESSION,
+        )
+        results["raw_empty"] = raw.empty
+        results["raw_shape"] = list(raw.shape)
+        close = raw["Close"]
+        results["close_type"] = type(close).__name__
+        results["close_columns"] = list(close.columns) if hasattr(close, "columns") else "Series"
+        for t in tickers[:3]:
+            if hasattr(close, "columns") and t in close.columns:
+                s = close[t].dropna()
+                results["checks"].append({"ticker": t, "ok": True, "rows": len(s), "last": round(float(s.iloc[-1]), 2) if len(s) else None})
+            else:
+                results["checks"].append({"ticker": t, "ok": False, "reason": "not in columns"})
+    except Exception as e:
+        results["error"] = str(e)
+    return results
+
 @app.get("/sectors")
 def get_sectors():
+    tickers = list(SECTOR_ETFS.values())
+    try:
+        raw = yf.download(
+            tickers, period="1y", interval="1wk",
+            progress=False, auto_adjust=True, threads=False,
+            session=_YF_SESSION,
+        )
+    except Exception as e:
+        print(f"Sectors batch download failed: {e}")
+        return []
+
+    close_df = raw["Close"]
+    if isinstance(close_df, pd.Series):
+        close_df = close_df.to_frame()
+
     results = []
-    period_weeks = 4
     for name, ticker in SECTOR_ETFS.items():
         try:
-            hist = yf.download(ticker, period="3mo", interval="1wk", progress=False, auto_adjust=True)
-            perf = pct_change(hist["Close"], period_weeks) if not hist.empty else None
-            results.append({"name": name, "perf": perf or 0.0})
-        except:
-            results.append({"name": name, "perf": 0.0})
+            if ticker not in close_df.columns:
+                print(f"  Sector {name} ({ticker}): NOT FOUND")
+                results.append({"name": name, "ticker": ticker,
+                                "perf1w": 0.0, "perf1m": 0.0, "perf3m": 0.0,
+                                "zscore": 0.0, "signal": "—"})
+                continue
 
-    results.sort(key=lambda x: x["perf"], reverse=True)
+            close = close_df[ticker].dropna()
+            print(f"  Sector {name} ({ticker}): {len(close)} weeks")
+
+            if len(close) < 5:
+                results.append({"name": name, "ticker": ticker,
+                                "perf1w": 0.0, "perf1m": 0.0, "perf3m": 0.0,
+                                "zscore": 0.0, "signal": "—"})
+                continue
+
+            perf1w = pct_change(close, 1)  or 0.0
+            perf1m = pct_change(close, 4)  or 0.0
+            perf3m = pct_change(close, 13) or 0.0
+
+            # Z-score: how unusual is the current 4W return vs its own 1Y history?
+            rolling_4w = close.pct_change(4).dropna() * 100
+            if len(rolling_4w) >= 8:
+                mu, sigma = rolling_4w.mean(), rolling_4w.std()
+                zscore = round((rolling_4w.iloc[-1] - mu) / sigma, 2) if sigma > 0 else 0.0
+            else:
+                zscore = 0.0
+
+            if zscore >= 1.5:
+                signal = "momentum"
+            elif zscore <= -1.5:
+                signal = "oversold"
+            elif abs(zscore) >= 1.0:
+                signal = "attention"
+            else:
+                signal = "neutre"
+
+            results.append({
+                "name": name, "ticker": ticker,
+                "perf1w": round(perf1w, 2), "perf1m": round(perf1m, 2), "perf3m": round(perf3m, 2),
+                "zscore": zscore, "signal": signal,
+            })
+        except Exception as e:
+            print(f"  Sector {name} ({ticker}): error — {e}")
+            results.append({"name": name, "ticker": ticker,
+                            "perf1w": 0.0, "perf1m": 0.0, "perf3m": 0.0,
+                            "zscore": 0.0, "signal": "—"})
+
+    # Most abnormal (highest |z-score|) first — those are the actionable signals
+    results.sort(key=lambda x: abs(x["zscore"]), reverse=True)
     return results
 
 @app.post("/analyze")
@@ -323,4 +443,5 @@ async def analyze(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
