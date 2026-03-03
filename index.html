@@ -240,6 +240,15 @@ backdrop-filter:blur(2px); font-size:11px; color:var(–text3); letter-spacing:.
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(–border2); border-radius:2px; }
 @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .macro-bar { grid-template-columns:repeat(3,1fr); } }
+
+.refresh-btn {
+padding:6px 16px; background:none; border:1px solid var(–border2); color:var(–text2);
+font-family:var(–mono); font-size:11px; border-radius:3px; cursor:pointer;
+transition:all .15s; letter-spacing:.05em; white-space:nowrap;
+}
+.refresh-btn:hover { border-color:var(–accent); color:var(–accent); }
+.refresh-btn:active { opacity:.6; }
+@media (max-width:600px) { .refresh-btn { padding:8px 20px; font-size:13px; } }
 </style>
 
 </head>
@@ -254,13 +263,13 @@ backdrop-filter:blur(2px); font-size:11px; color:var(–text3); letter-spacing:.
     </div>
     <div class="header-meta">
       <span id="last-update">—</span>
+      <button class="refresh-btn" onclick="reload()">↻ Actualiser</button>
       <span id="regime-badge" class="regime-badge regime-neutral">Connexion...</span>
     </div>
   </header>
 
   <div id="api-banner">
-    ⚠ Backend Render temporairement indisponible (démarrage froid ~30s) — données de démonstration affichées.<br>
-    Accès direct: <code>https://medium-term-pea-tracking.onrender.com</code> — actualisez dans quelques secondes.
+    <span id="banner-msg"></span>
   </div>
 
   <div class="macro-bar">
@@ -432,8 +441,9 @@ async function reload() {
 
 // ── MACRO ─────────────────────────────────────────────────────────────────
 async function loadMacro() {
+  showConnectingBanner();
   try {
-    const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(5000)});
+    const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(40000)});
     if (!r.ok) throw new Error();
     const d = macroSnap = await r.json();
     hideBanner();
@@ -783,8 +793,25 @@ Termine par: "⚠ Analyse informative uniquement — pas un conseil en investiss
   btn.disabled=false; btn.textContent='Analyser'; input.value='';
 }
 
-function showBanner(){ document.getElementById('api-banner').style.display='block'; }
-function hideBanner(){ document.getElementById('api-banner').style.display='none';  }
+function showConnectingBanner(){
+  const b=document.getElementById('api-banner');
+  b.style.display='block';
+  b.style.background='rgba(245,158,11,.08)';
+  b.style.borderColor='rgba(245,158,11,.2)';
+  b.style.color='#fbbf24';
+  document.getElementById('banner-msg').innerHTML=
+    '<div style="display:flex;align-items:center;gap:8px"><div class="spinner" style="border-top-color:#fbbf24"></div>Réveil du serveur Render en cours (~30s)… données réelles bientôt disponibles.</div>';
+}
+function showBanner(){
+  const b=document.getElementById('api-banner');
+  b.style.display='block';
+  b.style.background='';
+  b.style.borderColor='';
+  b.style.color='';
+  document.getElementById('banner-msg').innerHTML=
+    '⚠ Backend Render indisponible — données de démonstration affichées.<br>Appuyez sur <strong>↻ Actualiser</strong> pour réessayer.';
+}
+function hideBanner(){ document.getElementById('api-banner').style.display='none'; }
 </script>
 
 </body>
