@@ -22,6 +22,18 @@ from datetime import datetime, timedelta
 import math
 import os
 
+# Yahoo Finance blocks datacenter IPs without a real browser User-Agent
+_YF_SESSION = requests.Session()
+_YF_SESSION.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+})
+
 app = FastAPI(title="PEA Signal API")
 
 app.add_middleware(
@@ -208,6 +220,7 @@ def get_watchlist():
             tickers + ["^STOXX50E"],
             period="1y", interval="1wk",
             progress=False, auto_adjust=True, threads=True,
+            session=_YF_SESSION,
         )
     except Exception as e:
         print(f"Watchlist batch download failed: {e}")
@@ -282,7 +295,7 @@ def get_watchlist():
 
 @app.get("/chart/{ticker}")
 def get_chart(ticker: str, period: str = "6mo"):
-    hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True)
+    hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True, session=_YF_SESSION)
     if hist.empty:
         return {"error": "no data"}
 
@@ -314,6 +327,7 @@ def debug():
             tickers[:3],           # only first 3 to be fast
             period="1mo", interval="1wk",
             progress=False, auto_adjust=True, threads=True,
+            session=_YF_SESSION,
         )
         results["raw_empty"] = raw.empty
         results["raw_shape"] = list(raw.shape)
@@ -337,6 +351,7 @@ def get_sectors():
         raw = yf.download(
             tickers, period="1y", interval="1wk",
             progress=False, auto_adjust=True, threads=True,
+            session=_YF_SESSION,
         )
     except Exception as e:
         print(f"Sectors batch download failed: {e}")
