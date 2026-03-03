@@ -60,15 +60,15 @@ INDICES = {
 }
 
 SECTOR_ETFS = {
-    "Technologie":   "DXGE.DE",
-    "Aéronautique":  "AIR.PA",
-    "Banques":       "SX7P.DE",
-    "Industriels":   "SIE.DE",
-    "Luxe":          "MC.PA",
-    "Énergie":       "TTE.PA",
-    "Santé":         "SAN.PA",
-    "Assurance":     "ALV.DE",
-    "Immobilier":    "URW.AS",
+    "Technologie":   "SX8P.DE",   # STOXX Europe 600 Technology
+    "Aéronautique":  "DXGE.DE",   # Best available proxy — no pure European aerospace ETF
+    "Banques":       "SX7P.DE",   # STOXX Europe 600 Banks
+    "Industriels":   "SXNP.DE",   # STOXX Europe 600 Industrial Goods & Services
+    "Luxe":          "SXQP.DE",   # STOXX Europe 600 Personal & Household Goods
+    "Énergie":       "SXEP.DE",   # STOXX Europe 600 Oil & Gas
+    "Santé":         "SXDP.DE",   # STOXX Europe 600 Health Care
+    "Assurance":     "SXIP.DE",   # STOXX Europe 600 Insurance
+    "Immobilier":    "SXREP.DE",  # STOXX Europe 600 Real Estate
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
