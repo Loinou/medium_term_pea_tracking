@@ -259,8 +259,8 @@ backdrop-filter:blur(2px); font-size:11px; color:var(–text3); letter-spacing:.
   </header>
 
   <div id="api-banner">
-    ⚠ Backend non joignable sur <strong>localhost:8000</strong> — données de démonstration affichées.<br>
-    Pour les données réelles: <code>pip install fastapi uvicorn yfinance pandas requests</code> puis <code>python server.py</code>
+    ⚠ Backend Render temporairement indisponible (démarrage froid ~30s) — données de démonstration affichées.<br>
+    Accès direct: <code>https://medium-term-pea-tracking.onrender.com</code> — actualisez dans quelques secondes.
   </div>
 
   <div class="macro-bar">
@@ -308,7 +308,7 @@ backdrop-filter:blur(2px); font-size:11px; color:var(–text3); letter-spacing:.
         </tbody>
       </table>
     </div>
-    <div class="note" id="data-note">Source: Yahoo Finance via backend local · PEA éligible</div>
+    <div class="note" id="data-note">Source: Yahoo Finance via Render · PEA éligible</div>
   </div>
 
   <div class="panel" style="position:relative">
@@ -395,7 +395,7 @@ backdrop-filter:blur(2px); font-size:11px; color:var(–text3); letter-spacing:.
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 
 <script>
-const API = 'http://localhost:8000';
+const API = 'https://medium-term-pea-tracking.onrender.com';
 
 let allData       = [];
 let selectedIdx   = null;
@@ -747,31 +747,37 @@ Termine par: "⚠ Analyse informative uniquement — pas un conseil en investiss
   const cursor=Object.assign(document.createElement('span'),{className:'cursor-blink'});
 
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    const res=await fetch(`${API}/analyze`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:550,stream:true,system,messages:[{role:'user',content:userQ}]})
     });
-    const reader=res.body.getReader(),decoder=new TextDecoder();
-    let buf='';
-    while(true){
-      const {done,value}=await reader.read(); if(done) break;
-      buf+=decoder.decode(value,{stream:true});
-      const lines=buf.split('\n'); buf=lines.pop();
-      for(const line of lines){
-        if(!line.startsWith('data: ')) continue;
-        const raw=line.slice(6).trim(); if(raw==='[DONE]') break;
-        try{
-          const e=JSON.parse(raw);
-          if(e.type==='content_block_delta'&&e.delta?.type==='text_delta') streamEl.textContent+=e.delta.text;
-        }catch{}
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      streamEl.textContent=err.error||'Erreur backend — vérifiez que ANTHROPIC_API_KEY est configurée sur Render.';
+      streamEl.style.color='var(--danger)';
+    } else {
+      const reader=res.body.getReader(),decoder=new TextDecoder();
+      let buf='';
+      while(true){
+        const {done,value}=await reader.read(); if(done) break;
+        buf+=decoder.decode(value,{stream:true});
+        const lines=buf.split('\n'); buf=lines.pop();
+        for(const line of lines){
+          if(!line.startsWith('data: ')) continue;
+          const raw=line.slice(6).trim(); if(raw==='[DONE]') break;
+          try{
+            const e=JSON.parse(raw);
+            if(e.type==='content_block_delta'&&e.delta?.type==='text_delta') streamEl.textContent+=e.delta.text;
+          }catch{}
+        }
+        streamEl.appendChild(cursor);
+        output.scrollTop=output.scrollHeight;
       }
-      streamEl.appendChild(cursor);
-      output.scrollTop=output.scrollHeight;
+      cursor.remove();
     }
-    cursor.remove();
   }catch{
-    streamEl.textContent='Erreur de connexion à l\'API Anthropic.';
+    streamEl.textContent='Erreur de connexion au backend.';
     streamEl.style.color='var(--danger)';
   }
   btn.disabled=false; btn.textContent='Analyser'; input.value='';
