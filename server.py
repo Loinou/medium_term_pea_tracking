@@ -304,6 +304,32 @@ def get_chart(ticker: str, period: str = "6mo"):
         "ma20":    ma20_v,
     }
 
+@app.get("/debug")
+def debug():
+    """Lightweight diagnostic — open in any browser to see what yfinance returns."""
+    tickers = [item["ticker"] for item in WATCHLIST]
+    results = {"watchlist_tickers": tickers, "checks": []}
+    try:
+        raw = yf.download(
+            tickers[:3],           # only first 3 to be fast
+            period="1mo", interval="1wk",
+            progress=False, auto_adjust=True, threads=True,
+        )
+        results["raw_empty"] = raw.empty
+        results["raw_shape"] = list(raw.shape)
+        close = raw["Close"]
+        results["close_type"] = type(close).__name__
+        results["close_columns"] = list(close.columns) if hasattr(close, "columns") else "Series"
+        for t in tickers[:3]:
+            if hasattr(close, "columns") and t in close.columns:
+                s = close[t].dropna()
+                results["checks"].append({"ticker": t, "ok": True, "rows": len(s), "last": round(float(s.iloc[-1]), 2) if len(s) else None})
+            else:
+                results["checks"].append({"ticker": t, "ok": False, "reason": "not in columns"})
+    except Exception as e:
+        results["error"] = str(e)
+    return results
+
 @app.get("/sectors")
 def get_sectors():
     tickers = list(SECTOR_ETFS.values())
