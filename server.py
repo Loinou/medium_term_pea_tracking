@@ -11,21 +11,23 @@
 # Le dashboard HTML se connecte automatiquement à cette adresse.
 # """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import yfinance as yf
+import httpx
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import math
+import os
 
 app = FastAPI(title="PEA Signal API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -293,6 +295,31 @@ def get_sectors():
 
     results.sort(key=lambda x: x["perf"], reverse=True)
     return results
+
+@app.post("/analyze")
+async def analyze(request: Request):
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {"error": "ANTHROPIC_API_KEY non configurée sur le serveur."}
+    body = await request.json()
+
+    async def stream():
+        async with httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST",
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json=body,
+            ) as resp:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
 
 if __name__ == "__main__":
     import uvicorn
