@@ -192,6 +192,11 @@ def conviction_score(stage, rs, vol, chg1m) -> int:
 def serve_frontend():
     return FileResponse("index.html")
 
+@app.get("/health")
+def health():
+    """Lightweight health check for Render — never fetches external data."""
+    return {"status": "ok"}
+
 @app.get("/macro")
 def get_macro():
     tickers = list(INDICES.values())
