@@ -46,21 +46,38 @@ app.add_middleware(
 # ── Univers PEA ──────────────────────────────────────────────────────────────
 
 WATCHLIST = [
+    # ── CAC 40 core ──────────────────────────────────────────────────────────
     {"ticker": "MC.PA",      "name": "LVMH",               "sector": "Luxe",              "exchange": "EPA"},
+    {"ticker": "RMS.PA",     "name": "Hermès",              "sector": "Luxe",              "exchange": "EPA"},
+    {"ticker": "KER.PA",     "name": "Kering",              "sector": "Luxe",              "exchange": "EPA"},
+    {"ticker": "OR.PA",      "name": "L'Oréal",             "sector": "Cosmétiques",       "exchange": "EPA"},
+    {"ticker": "RI.PA",      "name": "Pernod Ricard",       "sector": "Spiritueux",        "exchange": "EPA"},
     {"ticker": "AIR.PA",     "name": "Airbus",              "sector": "Aéronautique",      "exchange": "EPA"},
-    {"ticker": "ASML.AS",    "name": "ASML Holding",        "sector": "Semi-conducteurs",  "exchange": "AEX"},
+    {"ticker": "SAF.PA",     "name": "Safran",              "sector": "Aéronautique",      "exchange": "EPA"},
+    {"ticker": "HO.PA",      "name": "Thales",              "sector": "Défense",           "exchange": "EPA"},
     {"ticker": "SAN.PA",     "name": "Sanofi",              "sector": "Santé",             "exchange": "EPA"},
     {"ticker": "TTE.PA",     "name": "TotalEnergies",       "sector": "Énergie",           "exchange": "EPA"},
     {"ticker": "BNP.PA",     "name": "BNP Paribas",         "sector": "Banques",           "exchange": "EPA"},
-    {"ticker": "SAF.PA",     "name": "Safran",              "sector": "Aéronautique",      "exchange": "EPA"},
+    {"ticker": "ACA.PA",     "name": "Crédit Agricole",     "sector": "Banques",           "exchange": "EPA"},
+    {"ticker": "GLE.PA",     "name": "Société Générale",    "sector": "Banques",           "exchange": "EPA"},
+    {"ticker": "CS.PA",      "name": "AXA",                 "sector": "Assurance",         "exchange": "EPA"},
     {"ticker": "DG.PA",      "name": "Vinci",               "sector": "Infrastructure",    "exchange": "EPA"},
+    {"ticker": "VIE.PA",     "name": "Veolia",              "sector": "Infrastructure",    "exchange": "EPA"},
+    {"ticker": "AI.PA",      "name": "Air Liquide",         "sector": "Chimie",            "exchange": "EPA"},
+    {"ticker": "SGO.PA",     "name": "Saint-Gobain",        "sector": "Matériaux",         "exchange": "EPA"},
+    {"ticker": "ML.PA",      "name": "Michelin",            "sector": "Auto",              "exchange": "EPA"},
+    {"ticker": "STLAP.PA",   "name": "Stellantis",          "sector": "Auto",              "exchange": "EPA"},
+    {"ticker": "CAP.PA",     "name": "Capgemini",           "sector": "Technologie",       "exchange": "EPA"},
+    {"ticker": "DSY.PA",     "name": "Dassault Systèmes",   "sector": "Logiciels",         "exchange": "EPA"},
+    {"ticker": "STM.PA",     "name": "STMicroelectronics",  "sector": "Semi-conducteurs",  "exchange": "EPA"},
+    {"ticker": "LR.PA",      "name": "Legrand",             "sector": "Électronique",      "exchange": "EPA"},
+    {"ticker": "PUB.PA",     "name": "Publicis",            "sector": "Médias",            "exchange": "EPA"},
+    {"ticker": "ORA.PA",     "name": "Orange",              "sector": "Télécoms",          "exchange": "EPA"},
+    # ── Other European leaders (PEA éligible) ────────────────────────────────
+    {"ticker": "ASML.AS",    "name": "ASML Holding",        "sector": "Semi-conducteurs",  "exchange": "AEX"},
     {"ticker": "SIE.DE",     "name": "Siemens",             "sector": "Industriels",       "exchange": "XETRA"},
     {"ticker": "ALV.DE",     "name": "Allianz",             "sector": "Assurance",         "exchange": "XETRA"},
     {"ticker": "NOVO-B.CO",  "name": "Novo Nordisk",        "sector": "Pharma",            "exchange": "CSE"},
-    {"ticker": "RMS.PA",     "name": "Hermès",              "sector": "Luxe",              "exchange": "EPA"},
-    {"ticker": "OR.PA",      "name": "L'Oréal",             "sector": "Cosmétiques",       "exchange": "EPA"},
-    {"ticker": "CS.PA",      "name": "AXA",                 "sector": "Assurance",         "exchange": "EPA"},
-    {"ticker": "KER.PA",     "name": "Kering",              "sector": "Luxe",              "exchange": "EPA"},
 ]
 
 INDICES = {
@@ -239,6 +256,22 @@ def get_watchlist():
         volume_df = volume_df.to_frame()
     print("Watchlist columns:", list(close_df.columns))
 
+    # Daily data for chg1d (5-day download)
+    daily_close = pd.DataFrame()
+    try:
+        daily_raw = yf.download(
+            tickers + ["^STOXX50E"],
+            period="5d", interval="1d",
+            progress=False, auto_adjust=True, threads=False,
+            session=_YF_SESSION,
+        )
+        if not daily_raw.empty:
+            daily_close = daily_raw["Close"]
+            if isinstance(daily_close, pd.Series):
+                daily_close = daily_close.to_frame()
+    except Exception as e:
+        print(f"Daily download for chg1d failed (non-fatal): {e}")
+
     bench = pd.DataFrame()
     if "^STOXX50E" in close_df.columns:
         bench = pd.DataFrame({"Close": close_df["^STOXX50E"].dropna()})
@@ -265,8 +298,16 @@ def get_watchlist():
 
             chg1w = pct_change(close, 1)
             chg1m = pct_change(close, 4)
+            chg3m = pct_change(close, 13)
             hi52  = safe_float(close.iloc[-52:].max()) if len(close) >= 52 else safe_float(close.max())
             lo52  = safe_float(close.iloc[-52:].min()) if len(close) >= 52 else safe_float(close.min())
+
+            # 1-day change from daily data
+            chg1d = None
+            if not daily_close.empty and t in daily_close.columns:
+                dc = daily_close[t].dropna()
+                if len(dc) >= 2:
+                    chg1d = round((float(dc.iloc[-1]) / float(dc.iloc[-2]) - 1) * 100, 2)
 
             stage = weinstein_stage(hist)
             vol   = volume_trend(hist)
@@ -276,8 +317,10 @@ def get_watchlist():
             results.append({
                 **item,
                 "price":  last_price,
+                "chg1d":  chg1d,
                 "chg1w":  chg1w,
                 "chg1m":  chg1m,
+                "chg3m":  chg3m,
                 "hi52":   hi52,
                 "lo52":   lo52,
                 "stage":  stage,

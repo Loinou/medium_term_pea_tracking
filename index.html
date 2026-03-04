@@ -244,6 +244,33 @@ transition:all .15s; letter-spacing:.05em; white-space:nowrap;
 .refresh-btn:hover { border-color:var(--accent); color:var(--accent); }
 .refresh-btn:active { opacity:.6; }
 @media (max-width:600px) { .refresh-btn { padding:8px 20px; font-size:13px; } }
+
+/* ── Insights / Scatter View ─────────────────────────────────────────────── */
+.view-tabs { display:flex; gap:2px; background:var(--bg); border-radius:4px; padding:2px; }
+.view-toggle { padding:3px 10px; font-size:10px; text-transform:uppercase; letter-spacing:.07em; border:none; background:transparent; color:var(--text3); font-family:var(--mono); border-radius:3px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.view-toggle.active { background:rgba(0,212,168,.12); color:var(--accent); }
+.view-toggle:hover:not(.active) { color:var(--text2); background:var(--border); }
+
+.insights-controls { display:flex; align-items:flex-end; gap:14px; padding:10px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.axis-control { display:flex; flex-direction:column; gap:4px; }
+.axis-label { font-size:9px; text-transform:uppercase; letter-spacing:.12em; color:var(--text3); }
+.axis-select { background:var(--bg); border:1px solid var(--border2); border-radius:3px; color:var(--text); font-family:var(--mono); font-size:11px; padding:4px 8px; cursor:pointer; outline:none; transition:border-color .15s; min-width:110px; }
+.axis-select:hover  { border-color:var(--text3); }
+.axis-select:focus  { border-color:var(--accent); }
+.axis-select option { background:var(--surface); }
+
+.insights-chart-wrap { padding:12px 16px 0; height:340px; position:relative; }
+.insights-chart-wrap canvas { width:100% !important; height:100% !important; }
+
+.insights-legend { display:flex; flex-wrap:wrap; gap:6px 14px; padding:8px 16px; border-top:1px solid var(--border); min-height:32px; }
+.legend-item { display:flex; align-items:center; gap:5px; cursor:pointer; font-size:10px; color:var(--text3); transition:opacity .15s; user-select:none; }
+.legend-item:hover { color:var(--text2); }
+.legend-item.dimmed { opacity:.3; }
+.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+.drill-section { border-top:1px solid var(--border); }
+.drill-header { display:flex; align-items:center; justify-content:space-between; padding:7px 16px; border-bottom:1px solid var(--border); gap:8px; }
+.drill-scroll { overflow-x:auto; max-height:210px; overflow-y:auto; }
 </style>
 
 </head>
@@ -281,9 +308,16 @@ transition:all .15s; letter-spacing:.05em; white-space:nowrap;
 ```
   <div class="panel">
     <div class="panel-header">
-      <span class="panel-title">Watchlist PEA — Opportunités Détectées</span>
-      <button class="panel-action" onclick="reload()">↻ Actualiser</button>
+      <span class="panel-title">PEA Universe — Insights</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="view-tabs">
+          <button id="view-table"    class="view-toggle active"  onclick="setView('table')">Liste</button>
+          <button id="view-insights" class="view-toggle"          onclick="setView('insights')">Scatter</button>
+        </div>
+        <button class="panel-action" onclick="reload()">↻</button>
+      </div>
     </div>
+    <div id="table-view">
     <div class="filter-bar">
       <button class="filter-chip active" onclick="setFilter('all',this)">Tous</button>
       <button class="filter-chip" onclick="setFilter('stage2',this)">Stage 2 ↑</button>
@@ -313,7 +347,81 @@ transition:all .15s; letter-spacing:.05em; white-space:nowrap;
       </table>
     </div>
     <div class="note" id="data-note">Source: Yahoo Finance via Render · PEA éligible</div>
-  </div>
+    </div><!-- /table-view -->
+
+    <div id="insights-view" style="display:none">
+      <!-- Controls bar ─────────────────────────────────────────────────── -->
+      <div class="insights-controls">
+        <div class="axis-control">
+          <span class="axis-label">Axe X</span>
+          <select class="axis-select" id="x-axis-sel" onchange="insightXAxis=this.value;drawInsightChart()">
+            <option value="chg1m" selected>Var. 1M %</option>
+            <option value="chg3m">Var. 3M %</option>
+            <option value="chg1w">Var. 1S %</option>
+            <option value="chg1d">Var. 1J %</option>
+            <option value="rs">RS Score</option>
+            <option value="price">Prix €</option>
+          </select>
+        </div>
+        <div class="axis-control">
+          <span class="axis-label">Axe Y</span>
+          <select class="axis-select" id="y-axis-sel" onchange="insightYAxis=this.value;drawInsightChart()">
+            <option value="rs" selected>RS Score</option>
+            <option value="chg3m">Var. 3M %</option>
+            <option value="chg1m">Var. 1M %</option>
+            <option value="chg1w">Var. 1S %</option>
+            <option value="chg1d">Var. 1J %</option>
+            <option value="price">Prix €</option>
+          </select>
+        </div>
+        <div class="axis-control">
+          <span class="axis-label">Couleur</span>
+          <select class="axis-select" id="color-mode-sel" onchange="insightColorMode=this.value;drawInsightChart()">
+            <option value="sector"  selected>Secteur</option>
+            <option value="perf1m">Perf. 1M</option>
+            <option value="perf1d">Perf. 1J</option>
+            <option value="stage">Stage Weinstein</option>
+          </select>
+        </div>
+        <button class="filter-chip" style="align-self:flex-end" onclick="insightSelection.clear();drawInsightChart()">✕ Reset</button>
+      </div>
+
+      <!-- Scatter canvas ───────────────────────────────────────────────── -->
+      <div class="insights-chart-wrap">
+        <canvas id="insight-canvas"></canvas>
+      </div>
+
+      <!-- Sector / color legend ────────────────────────────────────────── -->
+      <div class="insights-legend" id="insight-legend"></div>
+
+      <!-- Drill-down table ─────────────────────────────────────────────── -->
+      <div class="drill-section">
+        <div class="drill-header">
+          <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)">
+            Détail — <span id="drill-count" style="color:var(--accent)">—</span>
+          </span>
+          <span style="font-size:10px;color:var(--text3)">clic = sélectionner · shift+clic = multi</span>
+        </div>
+        <div class="drill-scroll">
+          <table class="watchlist-table">
+            <thead>
+              <tr>
+                <th>Titre</th><th>Secteur</th><th>Prix</th>
+                <th onclick="sortDrill('chg1w')" style="cursor:pointer">1S %</th>
+                <th onclick="sortDrill('chg1m')" style="cursor:pointer">1M %</th>
+                <th onclick="sortDrill('chg3m')" style="cursor:pointer">3M %</th>
+                <th onclick="sortDrill('rs')"    style="cursor:pointer">RS</th>
+                <th>Stage</th>
+              </tr>
+            </thead>
+            <tbody id="drill-tbody">
+              <tr><td colspan="8" style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Cliquez un point pour filtrer</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /insights-view -->
+  </div><!-- /panel -->
 
   <div class="panel" style="position:relative">
     <div class="panel-header">
@@ -428,14 +536,36 @@ let macroSnap     = {};
 
 // ── FALLBACK DATA (shown when backend offline) ─────────────────────────────
 const FALLBACK_WATCHLIST = [
-  { ticker:'MC.PA',    name:'LVMH',        sector:'Luxe',         exchange:'EPA',   stage:2, rs:78, vol:'accumulation', score:4, chg1w:2.1,  chg1m:5.4,  price:720.5, hi52:840,  lo52:580,  mktcap:'360B' },
-  { ticker:'AIR.PA',   name:'Airbus',      sector:'Aéro',         exchange:'EPA',   stage:2, rs:82, vol:'accumulation', score:5, chg1w:1.8,  chg1m:8.2,  price:168.2, hi52:185,  lo52:120,  mktcap:'131B' },
-  { ticker:'ASML.AS',  name:'ASML',        sector:'Semi',         exchange:'AEX',   stage:2, rs:91, vol:'fort',         score:5, chg1w:3.4,  chg1m:11.2, price:680.4, hi52:1012, lo52:530,  mktcap:'268B' },
-  { ticker:'SAN.PA',   name:'Sanofi',      sector:'Santé',        exchange:'EPA',   stage:1, rs:55, vol:'neutre',       score:2, chg1w:-0.3, chg1m:1.2,  price:92.8,  hi52:106,  lo52:84,   mktcap:'116B' },
-  { ticker:'TTE.PA',   name:'TotalEnerg.', sector:'Énergie',      exchange:'EPA',   stage:3, rs:48, vol:'distribution', score:2, chg1w:-1.2, chg1m:-3.4, price:58.4,  hi52:68,   lo52:52,   mktcap:'144B' },
-  { ticker:'BNP.PA',   name:'BNP Paribas', sector:'Banques',      exchange:'EPA',   stage:2, rs:70, vol:'accumulation', score:4, chg1w:2.8,  chg1m:9.1,  price:74.5,  hi52:80,   lo52:52,   mktcap:'91B'  },
-  { ticker:'SAF.PA',   name:'Safran',      sector:'Aéro',         exchange:'EPA',   stage:2, rs:88, vol:'fort',         score:5, chg1w:2.2,  chg1m:7.8,  price:225.3, hi52:245,  lo52:155,  mktcap:'96B'  },
-  { ticker:'RMS.PA',   name:'Hermès',      sector:'Luxe',         exchange:'EPA',   stage:2, rs:85, vol:'fort',         score:5, chg1w:3.1,  chg1m:9.8,  price:2102,  hi52:2400, lo52:1500, mktcap:'221B' },
+  { ticker:'MC.PA',    name:'LVMH',              sector:'Luxe',            exchange:'EPA',   stage:2, rs:78, vol:'accumulation', score:4, chg1d:0.8,  chg1w:2.1,  chg1m:5.4,  chg3m:12.1, price:720.5, hi52:840,  lo52:580,  mktcap:'360B' },
+  { ticker:'RMS.PA',   name:'Hermès',            sector:'Luxe',            exchange:'EPA',   stage:2, rs:85, vol:'fort',         score:5, chg1d:1.5,  chg1w:3.1,  chg1m:9.8,  chg3m:21.2, price:2102,  hi52:2400, lo52:1500, mktcap:'221B' },
+  { ticker:'KER.PA',   name:'Kering',            sector:'Luxe',            exchange:'EPA',   stage:4, rs:32, vol:'distribution', score:1, chg1d:-1.1, chg1w:-2.4, chg1m:-6.8, chg3m:-14.2,price:385.5, hi52:540,  lo52:340,  mktcap:'48B'  },
+  { ticker:'OR.PA',    name:"L'Oréal",           sector:'Cosmétiques',     exchange:'EPA',   stage:2, rs:72, vol:'accumulation', score:3, chg1d:0.5,  chg1w:1.4,  chg1m:4.1,  chg3m:9.8,  price:402.2, hi52:450,  lo52:340,  mktcap:'215B' },
+  { ticker:'RI.PA',    name:'Pernod Ricard',     sector:'Spiritueux',      exchange:'EPA',   stage:4, rs:29, vol:'distribution', score:1, chg1d:-0.9, chg1w:-1.8, chg1m:-5.1, chg3m:-11.5,price:98.4,  hi52:145,  lo52:90,   mktcap:'26B'  },
+  { ticker:'AIR.PA',   name:'Airbus',            sector:'Aéronautique',    exchange:'EPA',   stage:2, rs:82, vol:'accumulation', score:5, chg1d:1.2,  chg1w:1.8,  chg1m:8.2,  chg3m:18.5, price:168.2, hi52:185,  lo52:120,  mktcap:'131B' },
+  { ticker:'SAF.PA',   name:'Safran',            sector:'Aéronautique',    exchange:'EPA',   stage:2, rs:88, vol:'fort',         score:5, chg1d:0.9,  chg1w:2.2,  chg1m:7.8,  chg3m:15.3, price:225.3, hi52:245,  lo52:155,  mktcap:'96B'  },
+  { ticker:'HO.PA',    name:'Thales',            sector:'Défense',         exchange:'EPA',   stage:2, rs:92, vol:'fort',         score:5, chg1d:2.4,  chg1w:3.9,  chg1m:13.2, chg3m:30.5, price:186.4, hi52:200,  lo52:120,  mktcap:'47B'  },
+  { ticker:'SAN.PA',   name:'Sanofi',            sector:'Santé',           exchange:'EPA',   stage:1, rs:55, vol:'neutre',       score:2, chg1d:-0.2, chg1w:-0.3, chg1m:1.2,  chg3m:3.1,  price:92.8,  hi52:106,  lo52:84,   mktcap:'116B' },
+  { ticker:'TTE.PA',   name:'TotalEnergies',     sector:'Énergie',         exchange:'EPA',   stage:3, rs:48, vol:'distribution', score:2, chg1d:-0.5, chg1w:-1.2, chg1m:-3.4, chg3m:-5.2, price:58.4,  hi52:68,   lo52:52,   mktcap:'144B' },
+  { ticker:'BNP.PA',   name:'BNP Paribas',       sector:'Banques',         exchange:'EPA',   stage:2, rs:70, vol:'accumulation', score:4, chg1d:1.4,  chg1w:2.8,  chg1m:9.1,  chg3m:19.8, price:74.5,  hi52:80,   lo52:52,   mktcap:'91B'  },
+  { ticker:'ACA.PA',   name:'Crédit Agricole',   sector:'Banques',         exchange:'EPA',   stage:2, rs:68, vol:'accumulation', score:3, chg1d:0.9,  chg1w:1.8,  chg1m:6.5,  chg3m:15.2, price:14.8,  hi52:16.5, lo52:10.5, mktcap:'41B'  },
+  { ticker:'GLE.PA',   name:'Soc. Générale',     sector:'Banques',         exchange:'EPA',   stage:2, rs:74, vol:'accumulation', score:4, chg1d:1.7,  chg1w:2.9,  chg1m:10.4, chg3m:24.1, price:32.8,  hi52:38,   lo52:20,   mktcap:'34B'  },
+  { ticker:'CS.PA',    name:'AXA',               sector:'Assurance',       exchange:'EPA',   stage:2, rs:66, vol:'neutre',       score:3, chg1d:0.4,  chg1w:1.1,  chg1m:3.8,  chg3m:9.2,  price:35.2,  hi52:40,   lo52:27,   mktcap:'66B'  },
+  { ticker:'DG.PA',    name:'Vinci',             sector:'Infrastructure',  exchange:'EPA',   stage:2, rs:61, vol:'neutre',       score:3, chg1d:0.2,  chg1w:0.8,  chg1m:3.1,  chg3m:7.4,  price:120.4, hi52:135,  lo52:100,  mktcap:'55B'  },
+  { ticker:'VIE.PA',   name:'Veolia',            sector:'Infrastructure',  exchange:'EPA',   stage:1, rs:44, vol:'neutre',       score:2, chg1d:-0.3, chg1w:-0.5, chg1m:0.8,  chg3m:2.1,  price:28.6,  hi52:34,   lo52:24,   mktcap:'20B'  },
+  { ticker:'AI.PA',    name:'Air Liquide',       sector:'Chimie',          exchange:'EPA',   stage:2, rs:72, vol:'accumulation', score:4, chg1d:0.4,  chg1w:1.1,  chg1m:4.2,  chg3m:8.9,  price:168.5, hi52:185,  lo52:140,  mktcap:'92B'  },
+  { ticker:'SGO.PA',   name:'Saint-Gobain',      sector:'Matériaux',       exchange:'EPA',   stage:2, rs:75, vol:'fort',         score:4, chg1d:1.0,  chg1w:2.0,  chg1m:6.8,  chg3m:16.4, price:82.6,  hi52:96,   lo52:58,   mktcap:'55B'  },
+  { ticker:'ML.PA',    name:'Michelin',          sector:'Auto',            exchange:'EPA',   stage:1, rs:52, vol:'neutre',       score:2, chg1d:-0.1, chg1w:0.2,  chg1m:1.5,  chg3m:4.2,  price:34.2,  hi52:42,   lo52:28,   mktcap:'25B'  },
+  { ticker:'STLAP.PA', name:'Stellantis',        sector:'Auto',            exchange:'EPA',   stage:4, rs:28, vol:'distribution', score:1, chg1d:-1.4, chg1w:-2.8, chg1m:-8.2, chg3m:-18.5,price:12.4,  hi52:24,   lo52:10,   mktcap:'38B'  },
+  { ticker:'CAP.PA',   name:'Capgemini',         sector:'Technologie',     exchange:'EPA',   stage:2, rs:76, vol:'fort',         score:4, chg1d:1.8,  chg1w:2.9,  chg1m:7.1,  chg3m:14.8, price:198.2, hi52:230,  lo52:155,  mktcap:'34B'  },
+  { ticker:'DSY.PA',   name:'Dassault Systèmes', sector:'Logiciels',       exchange:'EPA',   stage:2, rs:69, vol:'accumulation', score:3, chg1d:0.7,  chg1w:1.5,  chg1m:5.4,  chg3m:11.8, price:38.2,  hi52:44,   lo52:30,   mktcap:'51B'  },
+  { ticker:'STM.PA',   name:'STMicro',           sector:'Semi-conducteurs',exchange:'EPA',   stage:4, rs:35, vol:'distribution', score:1, chg1d:-1.8, chg1w:-3.2, chg1m:-9.4, chg3m:-22.1,price:22.1,  hi52:48,   lo52:18,   mktcap:'20B'  },
+  { ticker:'LR.PA',    name:'Legrand',           sector:'Électronique',    exchange:'EPA',   stage:2, rs:78, vol:'accumulation', score:4, chg1d:0.6,  chg1w:1.4,  chg1m:5.8,  chg3m:13.5, price:108.4, hi52:120,  lo52:88,   mktcap:'29B'  },
+  { ticker:'PUB.PA',   name:'Publicis',          sector:'Médias',          exchange:'EPA',   stage:2, rs:80, vol:'fort',         score:4, chg1d:1.1,  chg1w:2.1,  chg1m:8.4,  chg3m:18.9, price:118.6, hi52:130,  lo52:88,   mktcap:'51B'  },
+  { ticker:'ORA.PA',   name:'Orange',            sector:'Télécoms',        exchange:'EPA',   stage:1, rs:42, vol:'neutre',       score:1, chg1d:-0.2, chg1w:0.1,  chg1m:0.4,  chg3m:1.2,  price:10.8,  hi52:12.5, lo52:9.5,  mktcap:'28B'  },
+  { ticker:'ASML.AS',  name:'ASML',              sector:'Semi-conducteurs',exchange:'AEX',   stage:2, rs:91, vol:'fort',         score:5, chg1d:2.1,  chg1w:3.4,  chg1m:11.2, chg3m:22.4, price:680.4, hi52:1012, lo52:530,  mktcap:'268B' },
+  { ticker:'SIE.DE',   name:'Siemens',           sector:'Industriels',     exchange:'XETRA', stage:2, rs:82, vol:'fort',         score:5, chg1d:1.3,  chg1w:2.5,  chg1m:9.8,  chg3m:22.1, price:205.4, hi52:225,  lo52:155,  mktcap:'148B' },
+  { ticker:'ALV.DE',   name:'Allianz',           sector:'Assurance',       exchange:'XETRA', stage:2, rs:79, vol:'accumulation', score:4, chg1d:0.8,  chg1w:1.6,  chg1m:5.9,  chg3m:13.8, price:295.4, hi52:320,  lo52:230,  mktcap:'120B' },
+  { ticker:'NOVO-B.CO',name:'Novo Nordisk',      sector:'Pharma',          exchange:'CSE',   stage:4, rs:31, vol:'distribution', score:1, chg1d:-2.1, chg1w:-4.2, chg1m:-12.4,chg3m:-28.5,price:72.4,  hi52:150,  lo52:60,   mktcap:'330B' },
 ];
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
@@ -501,6 +631,9 @@ async function loadWatchlist() {
   renderWatchlist();
   if (allData.length) selectRow(0);
   buildAlerts();
+  // Refresh scatter if insights view is visible
+  const iv = document.getElementById('insights-view');
+  if (iv && iv.style.display !== 'none') drawInsightChart();
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────
@@ -814,6 +947,354 @@ Termine par: "⚠ Analyse informative uniquement — pas un conseil en investiss
     streamEl.style.color='var(--danger)';
   }
   btn.disabled=false; btn.textContent='Analyser'; input.value='';
+}
+
+// ── INSIGHTS SCATTER VIEW ─────────────────────────────────────────────────
+
+let insightChart    = null;
+let insightXAxis    = 'chg1m';
+let insightYAxis    = 'rs';
+let insightColorMode = 'sector';
+let insightSelection = new Set();  // selected tickers
+let drillSortCol    = 'rs';
+let drillSortDir    = -1;
+
+const SECTOR_COLORS = {
+  'Luxe':              '#a78bfa',
+  'Aéronautique':      '#60a5fa',
+  'Semi-conducteurs':  '#34d399',
+  'Santé':             '#f472b6',
+  'Énergie':           '#fb923c',
+  'Banques':           '#fbbf24',
+  'Assurance':         '#a3e635',
+  'Industriels':       '#22d3ee',
+  'Infrastructure':    '#f87171',
+  'Cosmétiques':       '#e879f9',
+  'Pharma':            '#4ade80',
+  'Technologie':       '#38bdf8',
+  'Logiciels':         '#818cf8',
+  'Télécoms':          '#fb7185',
+  'Matériaux':         '#d97706',
+  'Auto':              '#94a3b8',
+  'Médias':            '#0ea5e9',
+  'Spiritueux':        '#c084fc',
+  'Électronique':      '#2dd4bf',
+  'Défense':           '#84cc16',
+  'Chimie':            '#f59e0b',
+  'Finance':           '#6366f1',
+};
+
+const STAGE_COLORS = { 1:'#94a3b8', 2:'#10b981', 3:'#f59e0b', 4:'#ef4444' };
+
+const AXIS_LABELS = {
+  price:  'Prix (€)',
+  chg1d:  'Var. 1J %',
+  chg1w:  'Var. 1S %',
+  chg1m:  'Var. 1M %',
+  chg3m:  'Var. 3M %',
+  rs:     'RS / STOXX',
+};
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function getAxisValue(d, axis) {
+  switch(axis) {
+    case 'price':  return d.price  ?? 0;
+    case 'chg1d':  return d.chg1d  ?? 0;
+    case 'chg1w':  return d.chg1w  ?? 0;
+    case 'chg1m':  return d.chg1m  ?? 0;
+    case 'chg3m':  return d.chg3m  ?? 0;
+    case 'rs':     return d.rs     ?? 50;
+    default:       return 0;
+  }
+}
+
+function getPointColorRgba(d, alpha) {
+  if (insightColorMode === 'sector') {
+    return hexToRgba(SECTOR_COLORS[d.sector] ?? '#94a3b8', alpha);
+  }
+  if (insightColorMode === 'stage') {
+    return hexToRgba(STAGE_COLORS[d.stage] ?? '#94a3b8', alpha);
+  }
+  // perf1m / perf1d
+  const v = insightColorMode === 'perf1d' ? (d.chg1d ?? 0) : (d.chg1m ?? 0);
+  return v >= 0 ? `rgba(16,185,129,${alpha})` : `rgba(239,68,68,${alpha})`;
+}
+
+// Custom Chart.js plugin to draw ticker labels on scatter points
+const scatterLabelPlugin = {
+  id: 'scatterLabels',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach((ds, i) => {
+      const meta = chart.getDatasetMeta(i);
+      meta.data.forEach((point, j) => {
+        const pt = ds.data[j];
+        if (!pt || !pt.label) return;
+        const props = point.getProps(['x','y'], true);
+        ctx.save();
+        ctx.font = "500 9px 'DM Mono', monospace";
+        ctx.fillStyle = 'rgba(148,163,184,0.85)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(pt.label, props.x, props.y - 9);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+function drawInsightChart() {
+  if (!allData.length) return;
+  const canvas = document.getElementById('insight-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (insightChart) { insightChart.destroy(); insightChart = null; }
+
+  const hasSel = insightSelection.size > 0;
+
+  const points = allData.map(d => ({
+    x: getAxisValue(d, insightXAxis),
+    y: getAxisValue(d, insightYAxis),
+    label: d.ticker.split('.')[0],
+    _d: d,
+  }));
+
+  const bgColors = allData.map(d =>
+    getPointColorRgba(d, hasSel && !insightSelection.has(d.ticker) ? 0.10 : 0.75)
+  );
+  const bdColors = allData.map(d =>
+    getPointColorRgba(d, hasSel && !insightSelection.has(d.ticker) ? 0.15 : 1)
+  );
+  const radii = allData.map(d =>
+    (hasSel && insightSelection.has(d.ticker)) ? 12 : 8
+  );
+  const hoverRadii = allData.map(d =>
+    (hasSel && insightSelection.has(d.ticker)) ? 15 : 11
+  );
+
+  const xLabel = AXIS_LABELS[insightXAxis];
+  const yLabel = AXIS_LABELS[insightYAxis];
+  const isPct  = a => a !== 'price' && a !== 'rs';
+
+  insightChart = new Chart(ctx, {
+    type: 'scatter',
+    plugins: [scatterLabelPlugin],
+    data: {
+      datasets: [{
+        label: 'Titres PEA',
+        data: points,
+        backgroundColor: bgColors,
+        borderColor: bdColors,
+        borderWidth: 1.5,
+        pointRadius: radii,
+        pointHoverRadius: hoverRadii,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      layout: { padding: { top: 16 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#111318',
+          borderColor: '#1e2330',
+          borderWidth: 1,
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          titleFont: { family:"'DM Mono',monospace", size:12, weight:'600' },
+          bodyFont:  { family:"'DM Mono',monospace", size:11 },
+          padding: 10,
+          callbacks: {
+            title: items => `${items[0].raw.label} — ${items[0].raw._d.name}`,
+            label: item => {
+              const d = item.raw._d;
+              const xv = item.parsed.x;
+              const yv = item.parsed.y;
+              return [
+                `${xLabel}: ${xv.toFixed(isPct(insightXAxis)?1:2)}${isPct(insightXAxis)?'%':''}`,
+                `${yLabel}: ${yv.toFixed(isPct(insightYAxis)?1:2)}${isPct(insightYAxis)?'%':''}`,
+                `${d.sector}  ·  RS ${d.rs}  ·  Stage ${d.stage}`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display:true, text:xLabel, color:'#4a5568', font:{family:"'DM Mono',monospace", size:10} },
+          grid:  { color:'rgba(30,35,48,.55)', drawTicks:false },
+          ticks: { color:'#4a5568', font:{family:"'DM Mono',monospace", size:10},
+                   callback: v => isPct(insightXAxis) ? v+'%' : v },
+          border:{ color:'#252b3a' },
+        },
+        y: {
+          title: { display:true, text:yLabel, color:'#4a5568', font:{family:"'DM Mono',monospace", size:10} },
+          grid:  { color:'rgba(30,35,48,.55)', drawTicks:false },
+          ticks: { color:'#4a5568', font:{family:"'DM Mono',monospace", size:10},
+                   callback: v => isPct(insightYAxis) ? v+'%' : v },
+          border:{ color:'#252b3a' },
+        }
+      },
+      onClick: (event, elements) => {
+        if (!elements.length) {
+          insightSelection.clear();
+        } else {
+          const idx    = elements[0].index;
+          const ticker = allData[idx].ticker;
+          if (event.native.shiftKey) {
+            // Multi-select with Shift
+            if (insightSelection.has(ticker)) insightSelection.delete(ticker);
+            else insightSelection.add(ticker);
+          } else {
+            // Single select / deselect toggle
+            if (insightSelection.size === 1 && insightSelection.has(ticker)) {
+              insightSelection.clear();
+            } else {
+              insightSelection.clear();
+              insightSelection.add(ticker);
+            }
+          }
+          // Sync main chart + scorecard when exactly one is selected
+          if (insightSelection.size === 1) {
+            const selIdx = allData.findIndex(d => d.ticker === [...insightSelection][0]);
+            if (selIdx !== -1) {
+              selectedIdx = selIdx;
+              loadChart(allData[selIdx]);
+              updateScorecard(allData[selIdx]);
+            }
+          }
+        }
+        drawInsightChart();
+        renderDrillTable();
+      }
+    }
+  });
+
+  renderInsightLegend();
+  renderDrillTable();
+}
+
+function filterBySector(sector) {
+  const tickers = allData.filter(d => d.sector === sector).map(d => d.ticker);
+  const allInSector = tickers.every(t => insightSelection.has(t)) && insightSelection.size === tickers.length;
+  if (allInSector) {
+    insightSelection.clear();
+  } else {
+    insightSelection = new Set(tickers);
+  }
+  drawInsightChart();
+  renderDrillTable();
+}
+
+function renderInsightLegend() {
+  const el = document.getElementById('insight-legend');
+  if (!el) return;
+
+  if (insightColorMode === 'perf1m' || insightColorMode === 'perf1d') {
+    const lbl = insightColorMode === 'perf1d' ? '1J' : '1M';
+    el.innerHTML =
+      `<div class="legend-item"><div class="legend-dot" style="background:var(--up)"></div><span>Hausse ${lbl}</span></div>` +
+      `<div class="legend-item"><div class="legend-dot" style="background:var(--down)"></div><span>Baisse ${lbl}</span></div>`;
+    return;
+  }
+  if (insightColorMode === 'stage') {
+    el.innerHTML = [1,2,3,4].map(s =>
+      `<div class="legend-item"><div class="legend-dot" style="background:${STAGE_COLORS[s]}"></div><span>Stage ${s}</span></div>`
+    ).join('');
+    return;
+  }
+
+  // Sector legend — only show sectors present in allData
+  const present = [...new Set(allData.map(d => d.sector))].sort();
+  el.innerHTML = present.map(s => {
+    const col = SECTOR_COLORS[s] ?? '#94a3b8';
+    const sectorTickers = allData.filter(d => d.sector === s).map(d => d.ticker);
+    const active = insightSelection.size === 0 || sectorTickers.some(t => insightSelection.has(t));
+    return `<div class="legend-item${active ? '' : ' dimmed'}" onclick="filterBySector('${s}')">
+      <div class="legend-dot" style="background:${col}"></div><span>${s}</span>
+    </div>`;
+  }).join('');
+}
+
+function sortDrill(col) {
+  if (drillSortCol === col) drillSortDir *= -1;
+  else { drillSortCol = col; drillSortDir = -1; }
+  renderDrillTable();
+}
+
+function renderDrillTable() {
+  const tbody   = document.getElementById('drill-tbody');
+  const countEl = document.getElementById('drill-count');
+  if (!tbody) return;
+
+  let data = insightSelection.size > 0
+    ? allData.filter(d => insightSelection.has(d.ticker))
+    : [...allData];
+
+  data = data.slice().sort((a, b) => {
+    const av = a[drillSortCol] ?? 0;
+    const bv = b[drillSortCol] ?? 0;
+    return drillSortDir * (av > bv ? 1 : -1);
+  });
+
+  countEl.textContent = `${data.length} titre${data.length > 1 ? 's' : ''}`;
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--text3);font-size:11px">Cliquez un point pour filtrer</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(d => {
+    const highlighted = insightSelection.has(d.ticker);
+    const ps = d.price > 500 ? d.price.toFixed(0) : d.price > 10 ? d.price.toFixed(2) : d.price.toFixed(3);
+    const w  = d.chg1w ?? 0;
+    const m  = d.chg1m ?? 0;
+    const q  = d.chg3m ?? 0;
+    const rs = d.rs ?? 50;
+    const col = SECTOR_COLORS[d.sector] ?? 'var(--text2)';
+    return `<tr onclick="selectFromDrill('${d.ticker}')" style="${highlighted && insightSelection.size > 0 ? 'background:rgba(0,212,168,.07)' : ''}">
+      <td><div class="ticker-cell"><span class="ticker">${d.ticker.split('.')[0]}</span><span class="ticker-name">${d.name}</span></div></td>
+      <td style="color:${col};font-size:10px;white-space:nowrap">${d.sector}</td>
+      <td style="white-space:nowrap">${ps}€</td>
+      <td class="${w>=0?'pos':'neg'}">${w>=0?'+':''}${w.toFixed(1)}%</td>
+      <td class="${m>=0?'pos':'neg'}">${m>=0?'+':''}${m.toFixed(1)}%</td>
+      <td class="${q>=0?'pos':'neg'}">${q>=0?'+':''}${q.toFixed(1)}%</td>
+      <td>${rs}</td>
+      <td><span class="stage-badge stage-${d.stage}">S${d.stage}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function selectFromDrill(ticker) {
+  const idx = allData.findIndex(d => d.ticker === ticker);
+  if (idx === -1) return;
+  insightSelection.clear();
+  insightSelection.add(ticker);
+  selectRow(idx);
+  drawInsightChart();
+  renderDrillTable();
+}
+
+function setView(view) {
+  const tv = document.getElementById('table-view');
+  const iv = document.getElementById('insights-view');
+  if (tv) tv.style.display = view === 'table'    ? '' : 'none';
+  if (iv) iv.style.display = view === 'insights' ? '' : 'none';
+  document.querySelectorAll('.view-toggle').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById(`view-${view}`);
+  if (btn) btn.classList.add('active');
+  if (view === 'insights' && allData.length) {
+    // Slight delay lets the canvas become visible before Chart.js measures it
+    requestAnimationFrame(() => drawInsightChart());
+  }
 }
 
 function showConnectingBanner(){
