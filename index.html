@@ -311,13 +311,13 @@ transition:all .15s; letter-spacing:.05em; white-space:nowrap;
       <span class="panel-title">PEA Universe — Insights</span>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="view-tabs">
-          <button id="view-table"    class="view-toggle active"  onclick="setView('table')">Liste</button>
-          <button id="view-insights" class="view-toggle"          onclick="setView('insights')">Scatter</button>
+          <button id="view-table"    class="view-toggle"          onclick="setView('table')">Liste</button>
+          <button id="view-insights" class="view-toggle active"  onclick="setView('insights')">Scatter</button>
         </div>
         <button class="panel-action" onclick="reload()">↻</button>
       </div>
     </div>
-    <div id="table-view">
+    <div id="table-view" style="display:none">
     <div class="filter-bar">
       <button class="filter-chip active" onclick="setFilter('all',this)">Tous</button>
       <button class="filter-chip" onclick="setFilter('stage2',this)">Stage 2 ↑</button>
@@ -349,7 +349,7 @@ transition:all .15s; letter-spacing:.05em; white-space:nowrap;
     <div class="note" id="data-note">Source: Yahoo Finance via Render · PEA éligible</div>
     </div><!-- /table-view -->
 
-    <div id="insights-view" style="display:none">
+    <div id="insights-view">
       <!-- Controls bar ─────────────────────────────────────────────────── -->
       <div class="insights-controls">
         <div class="axis-control">
@@ -631,9 +631,8 @@ async function loadWatchlist() {
   renderWatchlist();
   if (allData.length) selectRow(0);
   buildAlerts();
-  // Refresh scatter if insights view is visible
-  const iv = document.getElementById('insights-view');
-  if (iv && iv.style.display !== 'none') drawInsightChart();
+  // Draw / refresh scatter chart (always visible by default)
+  setTimeout(() => drawInsightChart(), 0);
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────
@@ -1292,8 +1291,8 @@ function setView(view) {
   const btn = document.getElementById(`view-${view}`);
   if (btn) btn.classList.add('active');
   if (view === 'insights' && allData.length) {
-    // Slight delay lets the canvas become visible before Chart.js measures it
-    requestAnimationFrame(() => drawInsightChart());
+    // Small delay lets the browser compute layout before Chart.js measures canvas
+    setTimeout(() => drawInsightChart(), 0);
   }
 }
 
