@@ -533,6 +533,7 @@ let sortCol       = 'score';
 let sortDir       = -1;
 let priceChart    = null;
 let macroSnap     = {};
+let macroOk       = false;
 
 // ── FALLBACK DATA (shown when backend offline) ─────────────────────────────
 const FALLBACK_WATCHLIST = [
@@ -577,17 +578,28 @@ document.addEventListener('DOMContentLoaded', () => {
 async function reload() {
   document.getElementById('last-update').textContent =
     'MàJ: ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-  await loadMacro();                                    // warms the server first
-  await Promise.all([loadWatchlist(), loadSectors()]); // then load heavy data in parallel
+  macroOk = false;
+  await wakeServer();                                   // ping /health to wake Render (fast, no yfinance)
+  await loadMacro();                                    // fetch real macro data (server already awake)
+  await Promise.all([loadWatchlist(), loadSectors()]); // load heavy data in parallel
+}
+
+async function wakeServer() {
+  showConnectingBanner();
+  try {
+    await fetch(`${API}/health`, {signal: AbortSignal.timeout(55000)});
+  } catch {
+    // Server didn't respond — subsequent data calls will fall back to demo data
+  }
 }
 
 // ── MACRO ─────────────────────────────────────────────────────────────────
 async function loadMacro() {
-  showConnectingBanner();
   try {
-    const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(40000)});
+    const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(25000)});
     if (!r.ok) throw new Error();
     const d = macroSnap = await r.json();
+    macroOk = true;
     hideBanner();
     ['es50','cac','dax','eurusd','bund'].forEach(k => {
       const c = d[k]; if (!c) return;
@@ -620,7 +632,7 @@ async function loadWatchlist() {
     const r = await fetch(`${API}/watchlist`, {signal: AbortSignal.timeout(60000)});
     if (!r.ok) throw new Error();
     allData = await r.json();
-    hideBanner();
+    if (macroOk) hideBanner(); // only hide if macro also loaded real data
     document.getElementById('data-note').textContent =
       `✓ Données réelles · Yahoo Finance · ${new Date().toLocaleDateString('fr-FR')} · PEA éligible`;
   } catch {
@@ -723,7 +735,7 @@ async function loadChart(d) {
   document.getElementById('chart-sector').textContent = `${d.sector} · ${d.exchange}`;
   document.getElementById('chart-loading').style.display='flex';
   try {
-    const r=await fetch(`${API}/chart/${encodeURIComponent(d.ticker)}?period=${currentTF}`,{signal:AbortSignal.timeout(10000)});
+    const r=await fetch(`${API}/chart/${encodeURIComponent(d.ticker)}?period=${currentTF}`,{signal:AbortSignal.timeout(20000)});
     if(!r.ok) throw new Error();
     drawChart(await r.json(),d);
   } catch {
