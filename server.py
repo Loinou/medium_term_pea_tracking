@@ -11,7 +11,7 @@
 # Le dashboard HTML se connecte automatiquement à cette adresse.
 # """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import yfinance as yf
@@ -246,11 +246,11 @@ def get_watchlist():
         )
     except Exception as e:
         print(f"Watchlist batch download failed: {e}")
-        return []
+        raise HTTPException(status_code=503, detail="Yahoo Finance unavailable")
 
     if raw.empty:
         print("Watchlist batch download returned empty DataFrame")
-        return []
+        raise HTTPException(status_code=503, detail="Yahoo Finance returned no data")
 
     close_df  = raw["Close"]
     volume_df = raw["Volume"]
@@ -339,13 +339,15 @@ def get_watchlist():
             continue
 
     print(f"Watchlist returning {len(results)} rows")
+    if not results:
+        raise HTTPException(status_code=503, detail="No ticker data available from Yahoo Finance")
     return results
 
 @app.get("/chart/{ticker}")
 def get_chart(ticker: str, period: str = "6mo"):
     hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True, session=_YF_SESSION)
     if hist.empty:
-        return {"error": "no data"}
+        raise HTTPException(status_code=404, detail="no data")
 
     close = hist["Close"]
     volume = hist["Volume"]
