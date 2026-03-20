@@ -599,6 +599,9 @@ async function loadMacro() {
     const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(25000)});
     if (!r.ok) throw new Error();
     const d = macroSnap = await r.json();
+    // Consider macro failed if all five indicators returned "—" (yfinance blocked)
+    const hasRealData = ['es50','cac','dax','eurusd','bund'].some(k => d[k]?.val && d[k].val !== '—');
+    if (!hasRealData) throw new Error('no real macro data');
     macroOk = true;
     hideBanner();
     ['es50','cac','dax','eurusd','bund'].forEach(k => {
@@ -632,6 +635,7 @@ async function loadWatchlist() {
     const r = await fetch(`${API}/watchlist`, {signal: AbortSignal.timeout(60000)});
     if (!r.ok) throw new Error();
     allData = await r.json();
+    if (!Array.isArray(allData) || !allData.length) throw new Error('empty'); // server returned [] despite 200
     if (macroOk) hideBanner(); // only hide if macro also loaded real data
     document.getElementById('data-note').textContent =
       `✓ Données réelles · Yahoo Finance · ${new Date().toLocaleDateString('fr-FR')} · PEA éligible`;
