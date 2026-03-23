@@ -16,23 +16,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import yfinance as yf
 import httpx
-import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import math
 import os
-
-# Yahoo Finance blocks datacenter IPs without a real browser User-Agent
-_YF_SESSION = requests.Session()
-_YF_SESSION.headers.update({
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-})
 
 app = FastAPI(title="PEA Signal API")
 
@@ -200,7 +187,7 @@ def health():
 @app.get("/macro")
 def get_macro():
     tickers = list(INDICES.values())
-    data = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=True, session=_YF_SESSION)
+    data = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=True)
     result = {}
     for key, sym in INDICES.items():
         try:
@@ -242,7 +229,6 @@ def get_watchlist():
             tickers + ["^STOXX50E"],
             period="1y", interval="1wk",
             progress=False, auto_adjust=True, threads=False,
-            session=_YF_SESSION,
         )
     except Exception as e:
         print(f"Watchlist batch download failed: {e}")
@@ -268,7 +254,6 @@ def get_watchlist():
             tickers + ["^STOXX50E"],
             period="5d", interval="1d",
             progress=False, auto_adjust=True, threads=False,
-            session=_YF_SESSION,
         )
         if not daily_raw.empty:
             daily_close = daily_raw["Close"]
@@ -345,7 +330,7 @@ def get_watchlist():
 
 @app.get("/chart/{ticker}")
 def get_chart(ticker: str, period: str = "6mo"):
-    hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True, session=_YF_SESSION)
+    hist = yf.download(ticker, period=period, interval="1wk", progress=False, auto_adjust=True)
     if hist.empty:
         raise HTTPException(status_code=404, detail="no data")
 
@@ -377,7 +362,6 @@ def debug():
             tickers[:3],           # only first 3 to be fast
             period="1mo", interval="1wk",
             progress=False, auto_adjust=True, threads=False,
-            session=_YF_SESSION,
         )
         results["raw_empty"] = raw.empty
         results["raw_shape"] = list(raw.shape)
@@ -401,7 +385,6 @@ def get_sectors():
         raw = yf.download(
             tickers, period="1y", interval="1wk",
             progress=False, auto_adjust=True, threads=False,
-            session=_YF_SESSION,
         )
     except Exception as e:
         print(f"Sectors batch download failed: {e}")
