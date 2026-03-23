@@ -20,6 +20,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import math
 import os
+import csv
 
 app = FastAPI(title="PEA Signal API")
 
@@ -30,62 +31,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Univers PEA ──────────────────────────────────────────────────────────────
+# ── Universe loader (reads CSV files next to server.py) ──────────────────────
 
-WATCHLIST = [
-    # ── CAC 40 core ──────────────────────────────────────────────────────────
-    {"ticker": "MC.PA",      "name": "LVMH",               "sector": "Luxe",              "exchange": "EPA"},
-    {"ticker": "RMS.PA",     "name": "Hermès",              "sector": "Luxe",              "exchange": "EPA"},
-    {"ticker": "KER.PA",     "name": "Kering",              "sector": "Luxe",              "exchange": "EPA"},
-    {"ticker": "OR.PA",      "name": "L'Oréal",             "sector": "Cosmétiques",       "exchange": "EPA"},
-    {"ticker": "RI.PA",      "name": "Pernod Ricard",       "sector": "Spiritueux",        "exchange": "EPA"},
-    {"ticker": "AIR.PA",     "name": "Airbus",              "sector": "Aéronautique",      "exchange": "EPA"},
-    {"ticker": "SAF.PA",     "name": "Safran",              "sector": "Aéronautique",      "exchange": "EPA"},
-    {"ticker": "HO.PA",      "name": "Thales",              "sector": "Défense",           "exchange": "EPA"},
-    {"ticker": "SAN.PA",     "name": "Sanofi",              "sector": "Santé",             "exchange": "EPA"},
-    {"ticker": "TTE.PA",     "name": "TotalEnergies",       "sector": "Énergie",           "exchange": "EPA"},
-    {"ticker": "BNP.PA",     "name": "BNP Paribas",         "sector": "Banques",           "exchange": "EPA"},
-    {"ticker": "ACA.PA",     "name": "Crédit Agricole",     "sector": "Banques",           "exchange": "EPA"},
-    {"ticker": "GLE.PA",     "name": "Société Générale",    "sector": "Banques",           "exchange": "EPA"},
-    {"ticker": "CS.PA",      "name": "AXA",                 "sector": "Assurance",         "exchange": "EPA"},
-    {"ticker": "DG.PA",      "name": "Vinci",               "sector": "Infrastructure",    "exchange": "EPA"},
-    {"ticker": "VIE.PA",     "name": "Veolia",              "sector": "Infrastructure",    "exchange": "EPA"},
-    {"ticker": "AI.PA",      "name": "Air Liquide",         "sector": "Chimie",            "exchange": "EPA"},
-    {"ticker": "SGO.PA",     "name": "Saint-Gobain",        "sector": "Matériaux",         "exchange": "EPA"},
-    {"ticker": "ML.PA",      "name": "Michelin",            "sector": "Auto",              "exchange": "EPA"},
-    {"ticker": "STLAP.PA",   "name": "Stellantis",          "sector": "Auto",              "exchange": "EPA"},
-    {"ticker": "CAP.PA",     "name": "Capgemini",           "sector": "Technologie",       "exchange": "EPA"},
-    {"ticker": "DSY.PA",     "name": "Dassault Systèmes",   "sector": "Logiciels",         "exchange": "EPA"},
-    {"ticker": "STM.PA",     "name": "STMicroelectronics",  "sector": "Semi-conducteurs",  "exchange": "EPA"},
-    {"ticker": "LR.PA",      "name": "Legrand",             "sector": "Électronique",      "exchange": "EPA"},
-    {"ticker": "PUB.PA",     "name": "Publicis",            "sector": "Médias",            "exchange": "EPA"},
-    {"ticker": "ORA.PA",     "name": "Orange",              "sector": "Télécoms",          "exchange": "EPA"},
-    # ── Other European leaders (PEA éligible) ────────────────────────────────
-    {"ticker": "ASML.AS",    "name": "ASML Holding",        "sector": "Semi-conducteurs",  "exchange": "AEX"},
-    {"ticker": "SIE.DE",     "name": "Siemens",             "sector": "Industriels",       "exchange": "XETRA"},
-    {"ticker": "ALV.DE",     "name": "Allianz",             "sector": "Assurance",         "exchange": "XETRA"},
-    {"ticker": "NOVO-B.CO",  "name": "Novo Nordisk",        "sector": "Pharma",            "exchange": "CSE"},
-]
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-INDICES = {
-    "es50":   "^STOXX50E",
-    "cac":    "^FCHI",
-    "dax":    "^GDAXI",
-    "eurusd": "EURUSD=X",
-    "bund":   "^TNX",   # proxy US10Y — Bund non dispo yfinance, on indique la source
-}
+def _load_watchlist() -> list[dict]:
+    path = os.path.join(BASE_DIR, "watchlist.csv")
+    with open(path, newline="", encoding="utf-8") as f:
+        return [row for row in csv.DictReader(f)]
 
-SECTOR_ETFS = {
-    "Technologie":   "SX8P.DE",   # STOXX Europe 600 Technology
-    "Aéronautique":  "EXV6.DE",   # iShares STOXX Europe 600 Industrial Goods (best proxy for aerospace)
-    "Banques":       "EXV1.DE",   # iShares STOXX Europe 600 Banks
-    "Industriels":   "SXNP.DE",   # STOXX Europe 600 Industrial Goods & Services
-    "Luxe":          "SXQP.DE",   # STOXX Europe 600 Personal & Household Goods
-    "Énergie":       "SXEP.DE",   # STOXX Europe 600 Oil & Gas
-    "Santé":         "SXDP.DE",   # STOXX Europe 600 Health Care
-    "Assurance":     "SXIP.DE",   # STOXX Europe 600 Insurance
-    "Immobilier":    "SXREP.DE",  # STOXX Europe 600 Real Estate
-}
+def _load_indices() -> dict:
+    path = os.path.join(BASE_DIR, "indices.csv")
+    with open(path, newline="", encoding="utf-8") as f:
+        return {row["key"]: row["ticker"] for row in csv.DictReader(f)}
+
+def _load_sector_etfs() -> dict:
+    path = os.path.join(BASE_DIR, "sector_etfs.csv")
+    with open(path, newline="", encoding="utf-8") as f:
+        return {row["name"]: row["ticker"] for row in csv.DictReader(f)}
+
+def load_universe():
+    global WATCHLIST, INDICES, SECTOR_ETFS
+    WATCHLIST    = _load_watchlist()
+    INDICES      = _load_indices()
+    SECTOR_ETFS  = _load_sector_etfs()
+    print(f"Universe loaded: {len(WATCHLIST)} tickers, {len(INDICES)} indices, {len(SECTOR_ETFS)} sector ETFs")
+
+load_universe()
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,6 +155,12 @@ def serve_frontend():
 def health():
     """Lightweight health check for Render — never fetches external data."""
     return {"status": "ok"}
+
+@app.post("/reload")
+def reload_universe():
+    """Reload watchlist/indices/sector_etfs from CSV files without restarting."""
+    load_universe()
+    return {"status": "reloaded", "tickers": len(WATCHLIST), "indices": len(INDICES), "sectors": len(SECTOR_ETFS)}
 
 @app.get("/macro")
 def get_macro():
