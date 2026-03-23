@@ -346,7 +346,7 @@ transition:all .15s; letter-spacing:.05em; white-space:nowrap;
         </tbody>
       </table>
     </div>
-    <div class="note" id="data-note">Source: Yahoo Finance via Render · PEA éligible</div>
+    <div class="note" id="data-note">Source: Yahoo Finance · PEA éligible</div>
     </div><!-- /table-view -->
 
     <div id="insights-view">
@@ -579,24 +579,15 @@ async function reload() {
   document.getElementById('last-update').textContent =
     'MàJ: ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
   macroOk = false;
-  await wakeServer();                                   // ping /health to wake Render (fast, no yfinance)
-  await loadMacro();                                    // fetch real macro data (server already awake)
-  await Promise.all([loadWatchlist(), loadSectors()]); // load heavy data in parallel
-}
-
-async function wakeServer() {
   showConnectingBanner();
-  try {
-    await fetch(`${API}/health`, {signal: AbortSignal.timeout(55000)});
-  } catch {
-    // Server didn't respond — subsequent data calls will fall back to demo data
-  }
+  await loadMacro();
+  await Promise.all([loadWatchlist(), loadSectors()]);
 }
 
 // ── MACRO ─────────────────────────────────────────────────────────────────
 async function loadMacro() {
   try {
-    const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(25000)});
+    const r = await fetch(`${API}/macro`, {signal: AbortSignal.timeout(15000)});
     if (!r.ok) throw new Error();
     const d = macroSnap = await r.json();
     // Consider macro failed if all five indicators returned "—" (yfinance blocked)
@@ -632,7 +623,7 @@ async function loadMacro() {
 // ── WATCHLIST ─────────────────────────────────────────────────────────────
 async function loadWatchlist() {
   try {
-    const r = await fetch(`${API}/watchlist`, {signal: AbortSignal.timeout(60000)});
+    const r = await fetch(`${API}/watchlist`, {signal: AbortSignal.timeout(45000)});
     if (!r.ok) throw new Error();
     allData = await r.json();
     if (!Array.isArray(allData) || !allData.length) throw new Error('empty'); // server returned [] despite 200
@@ -935,7 +926,7 @@ Termine par: "⚠ Analyse informative uniquement — pas un conseil en investiss
     });
     if(!res.ok){
       const err=await res.json().catch(()=>({}));
-      streamEl.textContent=err.error||'Erreur backend — vérifiez que ANTHROPIC_API_KEY est configurée sur Render.';
+      streamEl.textContent=err.error||'Erreur backend — vérifiez que ANTHROPIC_API_KEY est définie (export ANTHROPIC_API_KEY=sk-ant-...)';
       streamEl.style.color='var(--danger)';
     } else {
       const reader=res.body.getReader(),decoder=new TextDecoder();
@@ -1319,7 +1310,7 @@ function showConnectingBanner(){
   b.style.borderColor='rgba(245,158,11,.2)';
   b.style.color='#fbbf24';
   document.getElementById('banner-msg').innerHTML=
-    '<div style="display:flex;align-items:center;gap:8px"><div class="spinner" style="border-top-color:#fbbf24"></div>Réveil du serveur Render en cours (~30s)… données réelles bientôt disponibles.</div>';
+    '<div style="display:flex;align-items:center;gap:8px"><div class="spinner" style="border-top-color:#fbbf24"></div>Chargement des données en cours…</div>';
 }
 function showBanner(){
   const b=document.getElementById('api-banner');
@@ -1328,7 +1319,7 @@ function showBanner(){
   b.style.borderColor='';
   b.style.color='';
   document.getElementById('banner-msg').innerHTML=
-    '⚠ Backend Render indisponible — données de démonstration affichées.<br>Appuyez sur <strong>↻ Actualiser</strong> pour réessayer.';
+    '⚠ Serveur inaccessible — données de démonstration affichées.<br>Vérifiez que <code>python server.py</code> est lancé, puis <strong>↻ Actualiser</strong>.';
 }
 function hideBanner(){ document.getElementById('api-banner').style.display='none'; }
 </script>
