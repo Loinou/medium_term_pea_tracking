@@ -1,0 +1,31 @@
+ticker,name,sector,exchange
+MC.PA,LVMH,Luxe,EPA
+RMS.PA,Hermès,Luxe,EPA
+KER.PA,Kering,Luxe,EPA
+OR.PA,L'Oréal,Cosmétiques,EPA
+RI.PA,Pernod Ricard,Spiritueux,EPA
+AIR.PA,Airbus,Aéronautique,EPA
+SAF.PA,Safran,Aéronautique,EPA
+HO.PA,Thales,Défense,EPA
+SAN.PA,Sanofi,Santé,EPA
+TTE.PA,TotalEnergies,Énergie,EPA
+BNP.PA,BNP Paribas,Banques,EPA
+ACA.PA,Crédit Agricole,Banques,EPA
+GLE.PA,Société Générale,Banques,EPA
+CS.PA,AXA,Assurance,EPA
+DG.PA,Vinci,Infrastructure,EPA
+VIE.PA,Veolia,Infrastructure,EPA
+AI.PA,Air Liquide,Chimie,EPA
+SGO.PA,Saint-Gobain,Matériaux,EPA
+ML.PA,Michelin,Auto,EPA
+STLAP.PA,Stellantis,Auto,EPA
+CAP.PA,Capgemini,Technologie,EPA
+DSY.PA,Dassault Systèmes,Logiciels,EPA
+STM.PA,STMicroelectronics,Semi-conducteurs,EPA
+LR.PA,Legrand,Électronique,EPA
+PUB.PA,Publicis,Médias,EPA
+ORA.PA,Orange,Télécoms,EPA
+ASML.AS,ASML Holding,Semi-conducteurs,AEX
+SIE.DE,Siemens,Industriels,XETRA
+ALV.DE,Allianz,Assurance,XETRA
+NOVO-B.CO,Novo Nordisk,Pharma,CSE
